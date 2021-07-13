@@ -1,6 +1,7 @@
 import os
 import shutil
 import ee
+import geopandas as gpd
 from decouple import config
 
 
@@ -38,7 +39,7 @@ class SentinelHandler:
                     paths.append(os.path.join(folder, file))
         
         return paths
-
+    
     def del_folders(self, folders=None):
         """
         Method to delete folders
@@ -49,7 +50,31 @@ class SentinelHandler:
             folders = ['outputs', 'merged']
         for folder in folders:
             shutil.rmtree(self.get_abs_path(folder))
+    
+    def read_vectorlayer(self, vector, driver):
+        """
+        Method to read a vector layer
+        :param vector: name of vector layer with extension inside o inputs folder
+        :param drive: driver to open vector layer (gpkg,ogr,etc)
+        :return:
+        """
+        gdf = gpd.read_file(os.path.join(self.get_abs_path('inputs'), vector), driver=driver)
+        
+        if gdf['geometry'].count() == 1:
+            area = gdf['geometry'].to_crs(epsg=5880).area
+            if area[0] < 220300:
+                xmin, ymin, xmax, ymax = gdf.total_bounds
+                box = [[xmin, ymin], [xmin, ymax], [xmax, ymax], [xmax, ymin], [xmin, ymin]]
+            else:
+                #TODO: Tratar uma maneira de gerar split do vetor para areas menores features
+        else:
+            return 'Exist more than one features in vector limits, dissolve it and re-run the method'
             
+            pass
+
+        return gdf, box
+
+
 class SentinelDownloader:
     def __init__(self):
         pass
@@ -63,8 +88,10 @@ class SentinelDownloader:
         return ee.Initialize(credentials)
 
 
-
 if __name__ == '__main__':
     sh = SentinelHandler()
     sd = SentinelDownloader()
-    sd.authenticate_gee()
+    gdf = sh.read_vectorlayer('vector_tasca_test.gpkg', 'gpkg')
+    print(gdf[0])
+    # print(gdf.bounds)
+    # print(sh.get_abs_path('inputs/vector_tasca_test.gpkg'))
