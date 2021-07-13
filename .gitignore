@@ -1,2 +1,5 @@
 .venv/
 .idea/
+teste/
+key.json
+.env
