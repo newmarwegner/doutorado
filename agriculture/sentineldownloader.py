@@ -143,7 +143,6 @@ class SentinelDownloader:
         :param end_date: end date to find images
         :return:
         """
-        self.handler.create_folder('output')
         out_dir = os.path.join(self.handler.get_abs_path('output'), str(feature_name))
         boundary = ee.Geometry.Polygon(box, None, False)
         collection = ee.ImageCollection("COPERNICUS/S2_SR") \
