@@ -151,14 +151,14 @@ class SentinelHandler:
                     paths.append(os.path.join(root, file))
         
         return paths
-        
+    
     def grouppath_mosaic(self, paths_to_mosaic):
         """
             Method to grouppaths to create a input to mosaic
             """
         func = lambda x: x[-11:]
         temp = sorted(paths_to_mosaic, key=func)
-       
+        
         return [list(paths_to_mosaic) for i, paths_to_mosaic in groupby(temp, func)]
 
 
@@ -207,7 +207,7 @@ class SentinelDownloader:
                 src = rasterio.open(full)
                 src_files_to_mosaic.append(src)
                 out_meta = src.meta.copy()
-        
+            
             mosaic, out_trans = merge(src_files_to_mosaic)
             out_meta.update({"driver": "GTiff",
                              "height": mosaic.shape[1],
@@ -219,8 +219,8 @@ class SentinelDownloader:
             with rasterio.open(f'../merged/{ano}.tif', "w", **out_meta) as dest:
                 dest.write(mosaic)
         
-        self.handler.del_folders(['output',])
-        
+        self.handler.del_folders(['output', ])
+    
     def download_sentinel(self, vector_limit, driver, filter_field, start_date):
         """
         Method to download sentinel images from gee
@@ -238,9 +238,62 @@ class SentinelDownloader:
         
         self.create_mosaic()
 
+
+class SentinelIndexes:
+    def __init__(self):
+        self.handler = SentinelHandler()
+        self.profile = None
+    
+    def get_bands(self, path):
+        """
+        Method to get bands from mosaics in list on order below
+        [B1,B2,B3,B4,B5,B6,B7,B8,B8A,B9,B11,B12,AOT,WVP,SCL,TCI_R,TCI_G,TCI_B,MSK_CLDPRB,MSK_SNWPRB,QA10,QA20,QA60]
+        https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR
+        :return: A list of array bands
+        """
+        src = rasterio.open(path, 'r')
+        bands = [src.read(1, masked=True) / 10000,
+                 src.read(2, masked=True) / 10000,
+                 src.read(3, masked=True) / 10000,
+                 src.read(4, masked=True) / 10000,
+                 src.read(5, masked=True) / 10000,
+                 src.read(6, masked=True) / 10000,
+                 src.read(7, masked=True) / 10000,
+                 src.read(8, masked=True) / 10000,
+                 src.read(9, masked=True) / 10000,
+                 src.read(10, masked=True) / 10000,
+                 src.read(11, masked=True) / 10000,
+                 src.read(12, masked=True) / 10000,
+                 src.read(13, masked=True) / 10000,
+                 src.read(14, masked=True) / 10000,
+                 src.read(15, masked=True) / 10000,
+                 src.read(16, masked=True) / 10000,
+                 src.read(17, masked=True) / 10000,
+                 src.read(18, masked=True) / 10000,
+                 src.read(19, masked=True) / 10000,
+                 src.read(20, masked=True) / 10000,
+                 src.read(21, masked=True) / 10000,
+                 src.read(22, masked=True) / 10000,
+                 src.read(4, masked=True) / 10000]
+        
+        self.profile = src.profile
+        src.close()
+        
+        return bands, self.profile
+
+
+class Statistics:
+    def __init__(self):
+        pass
+
+
 if __name__ == '__main__':
-    sd = SentinelDownloader()
+    # sd = SentinelDownloader()
     # sd.authenticate_gee()
     # sd.download_sentinel('teste.gpkg', 'gpkg', 'id_pk', '2021-07-15')
-
-
+    si = SentinelIndexes()
+    si.handler.create_folder(si.handler.get_abs_path('indexes'))
+    for i in si.handler.path_files(si.handler.get_abs_path('merged')):
+        bands, profile = si.get_bands(i)
+        print(profile)
+        break
