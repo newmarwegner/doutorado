@@ -242,6 +242,7 @@ class SentinelDownloader:
 
 class SentinelIndexes:
     def __init__(self, path_raster):
+        self.date = path_raster.split('/')[-1][:8]
         self.handler = SentinelHandler()
         self.path_raster = path_raster
         self.profile = None
@@ -271,17 +272,17 @@ class SentinelIndexes:
                  src.read(10, masked=True) / 10000,
                  src.read(11, masked=True) / 10000,
                  src.read(12, masked=True) / 10000,
-                 src.read(13, masked=True) / 10000,
-                 src.read(14, masked=True) / 10000,
-                 src.read(15, masked=True) / 10000,
-                 src.read(16, masked=True) / 10000,
-                 src.read(17, masked=True) / 10000,
-                 src.read(18, masked=True) / 10000,
-                 src.read(19, masked=True) / 10000,
-                 src.read(20, masked=True) / 10000,
-                 src.read(21, masked=True) / 10000,
-                 src.read(22, masked=True) / 10000,
-                 src.read(4, masked=True) / 10000]
+                 src.read(13, masked=True) / 1000,
+                 src.read(14, masked=True) / 1000,
+                 src.read(15, masked=True),
+                 src.read(16, masked=True),
+                 src.read(17, masked=True),
+                 src.read(18, masked=True),
+                 src.read(19, masked=True),
+                 src.read(20, masked=True),
+                 src.read(21, masked=True),
+                 src.read(22, masked=True),
+                 src.read(23, masked=True)]
         
         self.profile = src.profile
         src.close()
@@ -303,22 +304,23 @@ class SentinelIndexes:
     def get_atsavi(self):
         """
         Method to generate atsavi index. The formula used:
-        1.22 * (self.b8 - 1.22 * self.b4 - 0.03) / (1.22 * self.b8 + self.b4 - 1.22 * 0.03 +
+        1.22 * (self.b8 - 1.22 * self.b4 - 0.03) / (self.b8 + self.b4 - 1.22 * 0.03 +
         0.08 * (1.0 + 1.22**2))
         :return: Array with index values
         """
         numerator = np.multiply(1.22,
                                 (np.subtract(np.subtract(self.b8, np.multiply(1.22, self.b4)), 0.03)))
-        denominator = np.subtract(np.add(np.multiply(1.22, self.b8), self.b4),
-                                  np.add(np.multiply(1.22, 0.03),
-                                         np.multiply(0.08, np.add(1, 1.22 ** 2))))
         
+        denominator = np.add(np.subtract(np.add(self.b8, self.b4), np.multiply(1.22, 0.03)),
+                              np.multiply(0.08, np.add(1.0, np.power(1.22, 2))))
+               
         return np.divide(numerator, denominator)
     
     def get_ari(self):
         """
-        Method to generate ari index. The formula used:
-        1.0 / self.b3 - 1.0 / self.b5
+        Method to generate ari2 index. The formula used:
+        (1.0 / self.b3) - (1.0 / self.b5)
+       
         :return: Array with index values
         """
         
@@ -393,6 +395,147 @@ class SentinelIndexes:
         denominator = np.add(self.b8, self.b3)
         
         return np.divide(numerator, denominator)
+    
+    def get_lci(self):
+        """
+        Method to generate lci index. The formula used:
+        (self.b8 - self.b5) / (self.b8 + self.b4)
+        :return: Array with index values
+        """
+        numerator = np.subtract(self.b8, self.b5)
+        denominator = np.add(self.b8, self.b4)
+        
+        return np.divide(numerator, denominator)
+    
+    def get_ndmi(self):
+        """
+        Method to generate ndmi index. The formula used:
+        (self.b8 - self.b11) / (self.b8 + self.b11)
+        :return: Array with index values
+        """
+        numerator = np.subtract(self.b8, self.b11)
+        denominator = np.add(self.b8, self.b11)
+        
+        return np.divide(numerator, denominator)
+    
+    def get_ndvi(self):
+        """
+        Method to generate ndvi index. The formula used:
+        (self.b8 - self.b4 / (self.b8 + self.b4))
+        :return: Array with index values
+        """
+        numerator = np.subtract(self.b8, self.b4)
+        denominator = np.add(self.b8, self.b4)
+        
+        return np.divide(numerator, denominator)
+    
+    def get_sci(self):
+        """
+        Method to generate sci index. The formula used:
+        (self.b11 - self.b8 / (self.b11 + self.b8))
+        :return: Array with index values
+        """
+        numerator = np.subtract(self.b11, self.b8)
+        denominator = np.add(self.b11, self.b8)
+        
+        return np.divide(numerator, denominator)
+    
+    def get_savi(self):
+        """
+        Method to generate savi index. The formula used:
+        (self.b8 - self.b4) / (self.b8 + self.b4 + 0.428) * (1.0 + 0.428)
+        :return: Array with index values
+        """
+        numerator = np.subtract(self.b8, self.b4)
+        denominator = np.multiply(np.add(np.add(self.b8, self.b4), 0.428), np.add(1.0, 0.428))
+        
+        return np.divide(numerator, denominator)
+    
+    def get_ctvi(self):
+        """
+        Method to generate ctvi index. The formula used:
+        (((b4 - b3) / (b4 + b3)) + 0.5) / abs(((b4 - b3) / (b4 + b3)) + 0.5) * sqrt(abs((((b4 - b3) / (b4 + b3))) + 0.5))
+        :return: Array with index values
+        """
+        p1 = np.add(np.divide(np.subtract(self.b4, self.b3), np.add(self.b4, self.b3)), 0.5)
+        p2 = np.abs(np.add(np.divide(np.subtract(self.b4, self.b3), np.add(self.b4, self.b3)), 0.5))
+        p3 = np.sqrt(np.abs(np.add(np.divide(np.subtract(self.b4, self.b3), np.add(self.b4, self.b3)), 0.5)))
+        
+        return np.multiply(np.divide(p1, p2), p3)
+    
+    def get_indexes(self, indexes=None):
+        """
+        Method to export all indexes as tiff in indexes folder
+        :param indexes: indexes to be exported. if values is none the function will export all (16) indexes
+        :return: tiff files exported
+        """
+        if indexes is None:
+            indexes = ['atsavi', 'ari', 'avi', 'arvi', 'chlgreen',
+                       'fe3', 'fo', 'gvmi', 'gndvi', 'lci', 'ndmi',
+                       'evi', 'ndvi', 'sci', 'savi', 'ctvi']
+        for index in indexes:
+            self.export_index(index)
+    
+    def export_index(self, index):
+        """
+        Method to run each get index a time and export to minimize use of memory
+        :param key: index to run locale function
+        :return: Tiff exported
+        """
+        self.handler.create_folder('../indexes')
+        
+        def export_atsavi():
+            return self.get_atsavi()
+        
+        def export_ari():
+            return self.get_ari()
+        
+        def export_avi():
+            return self.get_avi()
+        
+        def export_arvi():
+            return self.get_arvi()
+        
+        def export_chlgreen():
+            return self.get_chlgreen()
+        
+        def export_fe3():
+            return self.get_fe3()
+        
+        def export_fo():
+            return self.get_fo()
+        
+        def export_gvmi():
+            return self.get_gvmi()
+        
+        def export_gndvi():
+            return self.get_gndvi()
+        
+        def export_lci():
+            return self.get_lci()
+        
+        def export_ndmi():
+            return self.get_ndmi()
+        
+        def export_evi():
+            return self.get_evi()
+        
+        def export_ndvi():
+            return self.get_ndvi()
+        
+        def export_sci():
+            return self.get_sci()
+        
+        def export_savi():
+            return self.get_savi()
+        
+        def export_ctvi():
+            return self.get_ctvi()
+        
+        self.profile.update({'dtype': 'float32', 'count': 1})
+        with rasterio.open(self.handler.get_abs_path('indexes') + '/' + self.date + '_' + index + '.tif', 'w',
+                           **self.profile) as dst:
+            dst.write(locals()['export_' + index](), 1)
 
 
 class Statistics:
@@ -409,6 +552,7 @@ if __name__ == '__main__':
     for i in sh.path_files(sh.get_abs_path('merged')):
         si = SentinelIndexes(i)
         # bands, profile = si.get_bands()
-        print(si.get_gndvi())
+        si.get_indexes(['ari'])
         # print(len(bands))
         break
+
