@@ -4,6 +4,7 @@ import ee
 import geopandas as gpd
 import geemap
 import rasterio
+import numpy as np
 from rasterio.merge import merge
 from itertools import groupby
 from decouple import config
@@ -240,18 +241,24 @@ class SentinelDownloader:
 
 
 class SentinelIndexes:
-    def __init__(self):
+    def __init__(self, path_raster):
         self.handler = SentinelHandler()
+        self.path_raster = path_raster
         self.profile = None
+        self.b1, self.b2, self.b3, self.b4, self.b5, \
+        self.b6, self.b7, self.b8, self.b8A, self.b9, \
+        self.b11, self.b12, self.AOT, self.WVP, self.SCL, \
+        self.TCI_R, self.TCI_G, self.TCI_B, self.MSK_CLDPRB, \
+        self.MSK_SNWPRB, self.QA10, self.QA20, self.QA60 = self.get_bands()[0]
     
-    def get_bands(self, path):
+    def get_bands(self):
         """
         Method to get bands from mosaics in list on order below
         [B1,B2,B3,B4,B5,B6,B7,B8,B8A,B9,B11,B12,AOT,WVP,SCL,TCI_R,TCI_G,TCI_B,MSK_CLDPRB,MSK_SNWPRB,QA10,QA20,QA60]
         https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_S2_SR
         :return: A list of array bands
         """
-        src = rasterio.open(path, 'r')
+        src = rasterio.open(self.path_raster, 'r')
         bands = [src.read(1, masked=True) / 10000,
                  src.read(2, masked=True) / 10000,
                  src.read(3, masked=True) / 10000,
@@ -280,6 +287,112 @@ class SentinelIndexes:
         src.close()
         
         return bands, self.profile
+    
+    def get_evi(self):
+        """
+        Method to generate evi index. The formula used:
+        2.5*(self.b8-self.b4)/((self.b8+6*self.b4-7.5*self.b2)+1)
+        :return: Array with index values
+        """
+        numerator = np.multiply(2.5, np.subtract(self.b8, self.b4))
+        denominator = np.add(np.add(self.b8, np.subtract(np.multiply(6, self.b8),
+                                                         np.multiply(7.5, self.b2))), 1)
+        
+        return np.divide(numerator, denominator)
+    
+    def get_atsavi(self):
+        """
+        Method to generate atsavi index. The formula used:
+        1.22 * (self.b8 - 1.22 * self.b4 - 0.03) / (1.22 * self.b8 + self.b4 - 1.22 * 0.03 +
+        0.08 * (1.0 + 1.22**2))
+        :return: Array with index values
+        """
+        numerator = np.multiply(1.22,
+                                (np.subtract(np.subtract(self.b8, np.multiply(1.22, self.b4)), 0.03)))
+        denominator = np.subtract(np.add(np.multiply(1.22, self.b8), self.b4),
+                                  np.add(np.multiply(1.22, 0.03),
+                                         np.multiply(0.08, np.add(1, 1.22 ** 2))))
+        
+        return np.divide(numerator, denominator)
+    
+    def get_ari(self):
+        """
+        Method to generate ari index. The formula used:
+        1.0 / self.b3 - 1.0 / self.b5
+        :return: Array with index values
+        """
+        
+        return np.subtract(np.divide(1, self.b3), np.divide(1, self.b5))
+    
+    def get_avi(self):
+        """
+        Method to generate avi index. The formula used:
+        2.0 * self.b9 - self.b4
+        :return: Array with index values
+        """
+        
+        return np.subtract(np.multiply(2, self.b9), self.b4)
+    
+    def get_arvi(self):
+        """
+        Method to generate arvi index. The formula used:
+        (self.b9 - self.b4 - 0.106 * (self.b4 - self.b2)) / (self.b9 + self.b4 - 0.106 * (self.b4 - self.b2))
+        :return: Array with index values
+        """
+        numerator = np.subtract(self.b9, self.b4, np.multiply(0.106, np.subtract(self.b4, self.b2)))
+        denominator = np.add(self.b9,
+                             np.subtract(self.b4, np.multiply(0.106, np.subtract(self.b4, self.b2))))
+        
+        return np.divide(numerator, denominator)
+    
+    def get_chlgreen(self):
+        """
+        Method to generate chlgreen index. The formula used:
+        (self.b7/self.b3)**-1
+        :return: Array with index values
+        """
+        
+        return np.power(np.divide(self.b7, self.b3), -1)
+    
+    def get_fe3(self):
+        """
+        Method to generate fe3+ index. The formula used:
+        self.b4/self.b3
+        :return: Array with index values
+        """
+        
+        return np.divide(self.b4, self.b3)
+    
+    def get_fo(self):
+        """
+        Method to generate fe3+ index. The formula used:
+        self.b11/self.b8
+        :return: Array with index values
+        """
+        
+        return np.divide(self.b11, self.b8)
+    
+    def get_gvmi(self):
+        """
+        Method to generate gvmi index. The formula used:
+        ((self.b8 + 0.1) - (self.b12 + 0.02)) / ((self.b8 + 0.1) + (self.b12 + 0.02))
+        :return: Array with index values
+        """
+        numerator = np.subtract(np.add(self.b8, 0.1), np.add(self.b12, 0.02))
+        denominator = np.add(np.add(self.b8, 0.1), np.add(self.b12, 0.02))
+        
+        return np.divide(numerator, denominator)
+    
+    def get_gndvi(self):
+        """
+        Method to generate gndvi index. The formula used:
+        (self.b8 - self.b3) / (self.b8 + self.b3)
+        :return: Array with index values
+        """
+        numerator = np.subtract(self.b8, self.b3)
+        denominator = np.add(self.b8, self.b3)
+        
+        return np.divide(numerator, denominator)
 
 
 class Statistics:
@@ -291,9 +404,11 @@ if __name__ == '__main__':
     # sd = SentinelDownloader()
     # sd.authenticate_gee()
     # sd.download_sentinel('teste.gpkg', 'gpkg', 'id_pk', '2021-07-15')
-    si = SentinelIndexes()
-    si.handler.create_folder(si.handler.get_abs_path('indexes'))
-    for i in si.handler.path_files(si.handler.get_abs_path('merged')):
-        bands, profile = si.get_bands(i)
-        print(profile)
+    sh = SentinelHandler()
+    # si.handler.create_folder(si.handler.get_abs_path('indexes'))
+    for i in sh.path_files(sh.get_abs_path('merged')):
+        si = SentinelIndexes(i)
+        # bands, profile = si.get_bands()
+        print(si.get_gndvi())
+        # print(len(bands))
         break
