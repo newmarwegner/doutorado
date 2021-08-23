@@ -1,5 +1,6 @@
 import os
 import shutil
+import sqlite3
 import ee
 import geopandas as gpd
 import geemap
@@ -312,8 +313,8 @@ class SentinelIndexes:
                                 (np.subtract(np.subtract(self.b8, np.multiply(1.22, self.b4)), 0.03)))
         
         denominator = np.add(np.subtract(np.add(self.b8, self.b4), np.multiply(1.22, 0.03)),
-                              np.multiply(0.08, np.add(1.0, np.power(1.22, 2))))
-               
+                             np.multiply(0.08, np.add(1.0, np.power(1.22, 2))))
+        
         return np.divide(numerator, denominator)
     
     def get_ari(self):
@@ -538,21 +539,72 @@ class SentinelIndexes:
             dst.write(locals()['export_' + index](), 1)
 
 
+class Dbsqlite:
+    def __init__(self):
+        self.conn = sqlite3.connect('agriculture.db')
+        self.create_table()
+    
+    def disconn(self):
+        """
+        Method to disconnet database
+        :return: database closed
+        """
+        self.conn.close()
+    
+    def truncate_table(self, table):
+        """
+        Method to truncate table in sqlite
+        :param table: Name of table to be truncate
+        :return: Table truncated
+        """
+        cur = self.conn.cursor()
+        sql = f'delete from {table}'
+        cur.execute(sql)
+        self.conn.commit()
+        cur.close()
+    
+    def create_table(self, tables=None):
+        """
+        Method to create table from a dictionary
+        :param tables: Dictionary with keys from name of tables and keys of fields and type fields
+        :return: Tables created in sqlite database
+        """
+        if tables is None:
+            tables = [{"table": "stats", "fields":
+                {"id": 'integer primary key autoincrement',
+                 "data": 'text not null',
+                 "zonal_stats": 'text not null',
+                 "profile": 'text not null',
+                 }}, ]
+        
+        try:
+            for table in tables:
+                self.truncate_table(table["table"])
+        except:
+            for table in tables:
+                fields = [(i + ' ' + k) for i, k in table["fields"].items()]
+                cur = self.conn.cursor()
+                cur.execute(f'create table if not exists {table["table"]} ({",".join(fields)})')
+                cur.close()
+
+
 class Statistics:
     def __init__(self):
-        pass
+        self.database = Dbsqlite()
+        self.database.create_table()
+
+
+##TODO: Criar tabela com campos id, zonal_stats(dicionario), profile, bandas, data
 
 
 if __name__ == '__main__':
     # sd = SentinelDownloader()
     # sd.authenticate_gee()
     # sd.download_sentinel('teste.gpkg', 'gpkg', 'id_pk', '2021-07-15')
-    sh = SentinelHandler()
-    # si.handler.create_folder(si.handler.get_abs_path('indexes'))
-    for i in sh.path_files(sh.get_abs_path('merged')):
-        si = SentinelIndexes(i)
-        # bands, profile = si.get_bands()
-        si.get_indexes(['ari'])
-        # print(len(bands))
-        break
-
+    # sh = SentinelHandler()
+    # for i in sh.path_files(sh.get_abs_path('merged')):
+    #     si = SentinelIndexes(i)
+    #     si.get_indexes(['ari'])
+    #     break
+    stats = Statistics()
+    
