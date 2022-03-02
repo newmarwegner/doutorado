@@ -4,3 +4,9 @@ teste/
 key.json
 .env
 output/
+agriculture/agriculture.db
+indexes/
+inputs/vector_tasca_test.gpkg-shm
+inputs/vector_tasca_test.gpkg-wal
+merged/
+

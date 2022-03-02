@@ -1,6 +1,6 @@
 import os
 import shutil
-import sqlite3
+import psycopg2
 import ee
 import geopandas as gpd
 import geemap
@@ -539,10 +539,18 @@ class SentinelIndexes:
             dst.write(locals()['export_' + index](), 1)
 
 
-class Dbsqlite:
+class Postgresql:
     def __init__(self):
-        self.conn = sqlite3.connect('agriculture.db')
+        self.conn = self.conn_postgres()
         self.create_table()
+    
+    def conn_postgres(self):
+        """
+        Method to connect with PostgreSQL Database
+        :return: Conection with Database
+        """
+        return psycopg2.connect(host=config('host'), database=config('database'), user=config('user'),
+                                password=config('password'))
     
     def disconn(self):
         """
@@ -551,14 +559,14 @@ class Dbsqlite:
         """
         self.conn.close()
     
-    def truncate_table(self, table):
+    def drop_table(self, table):
         """
-        Method to truncate table in sqlite
+        Method to drop table in PostgreSQL
         :param table: Name of table to be truncate
-        :return: Table truncated
+        :return: Table droped
         """
         cur = self.conn.cursor()
-        sql = f'delete from {table}'
+        sql = f'drop table if exists {table}'
         cur.execute(sql)
         self.conn.commit()
         cur.close()
@@ -567,31 +575,28 @@ class Dbsqlite:
         """
         Method to create table from a dictionary
         :param tables: Dictionary with keys from name of tables and keys of fields and type fields
-        :return: Tables created in sqlite database
+        :return: Tables created in PostgreSQL database
         """
         if tables is None:
             tables = [{"table": "stats", "fields":
-                {"id": 'integer primary key autoincrement',
+                {"id": 'serial primary key',
                  "data": 'text not null',
                  "zonal_stats": 'text not null',
                  "profile": 'text not null',
                  }}, ]
         
-        try:
-            for table in tables:
-                self.truncate_table(table["table"])
-        except:
-            for table in tables:
-                fields = [(i + ' ' + k) for i, k in table["fields"].items()]
-                cur = self.conn.cursor()
-                cur.execute(f'create table if not exists {table["table"]} ({",".join(fields)})')
-                cur.close()
-
+        for table in tables:
+            self.drop_table(table["table"])
+            fields = [(i + ' ' + k) for i, k in table["fields"].items()]
+            cur = self.conn.cursor()
+            cur.execute(f'create table if not exists {table["table"]} ({",".join(fields)})')
+            self.conn.commit()
+            cur.close()
+ 
 
 class Statistics:
     def __init__(self):
-        self.database = Dbsqlite()
-        self.database.create_table()
+        self.database = Postgresql()
 
 
 ##TODO: Criar tabela com campos id, zonal_stats(dicionario), profile, bandas, data
@@ -607,4 +612,3 @@ if __name__ == '__main__':
     #     si.get_indexes(['ari'])
     #     break
     stats = Statistics()
-    
