@@ -1,4 +1,6 @@
+import json
 import os
+import pickle
 import shutil
 import psycopg2
 import ee
@@ -581,21 +583,19 @@ class Postgresql:
         if tables is None:
             tables = [{"table": "stats", "fields":
                 {"id": 'serial primary key',
-                 "data": 'text not null',
+                 "data": 'date not null',
                  "index": 'text not null',
-                 "raster_array": 'text not null',
-                 "raster_profile": 'text not null',
+                 "raster_array": 'real array not null',
                  "zonal_stats": 'text not null',
-                 "profile": 'text not null',
+                 "raster_profile": 'text not null'
                  }},
                       {"table": "stats_estimated", "fields":
                           {"id": 'serial primary key',
                            "data": 'text not null',
                            "index": 'text not null',
                            "raster_array": 'text not null',
-                           "raster_profile": 'text not null',
                            "zonal_stats": 'text not null',
-                           "profile": 'text not null',
+                           "raster_profile": 'text[] not null'
                            }}]
         
         for table in tables:
@@ -610,15 +610,41 @@ class Postgresql:
 class Statistics:
     def __init__(self):
         self.database = Postgresql()
+        self.sh = SentinelHandler()
+    
+    def run_raster(self, path):
+        with rasterio.open(path) as src:
+            image = src.read()
+            profile = src.profile
+        src.close()
+        
+        return image, profile
+    
+    def insert_index_database(self):
+        for path in self.sh.path_files('../indexes'):
+            raster_array, profile = self.run_raster(path)
+            date = path.split('/')[-1].split('_')[0]
+            index = path.split('/')[-1].split('_')[1][0:-4]
+            zonal_stats = 1
+            raster_profile = dict(profile)
+            raster_profile.update({'crs': str(raster_profile['crs'])})
+            cur = self.database.conn.cursor()
+            sql = f"insert into stats (data,index,raster_array,zonal_stats, raster_profile) \
+                        values (to_date('{date}','YYYYMMDD'),'{index}',ARRAY{raster_array[0][0].tolist()},'1','{json.dumps(raster_profile)}');"
+            print(f'inserido o indice {index} para a data {date}!')
+            cur.execute(sql)
+            self.database.conn.commit()
+            cur.close()
+            
 ##TODO: Criar tabela com campos id, zonal_stats(dicionario), profile, bandas, data
 
 
 class Diagnosys:
-##TODO: Preparar saidas para html
+    ##TODO: Preparar saidas para html
     def __init__(self, html):
         self.text = html
         self.run = self.print_html_doc()
-        
+    
     def print_html_doc(self):
         env = Environment(loader=FileSystemLoader(os.getcwd()),
                           trim_blocks=True)
@@ -627,10 +653,8 @@ class Diagnosys:
         web = template.render(title='estatisticas', run=self.text)
         with open("./templates/plots.html", "w") as fh:
             fh.write(web)
-
+        
         return webbrowser.open('file://' + os.path.realpath('./templates/index.html'))
-
-
 
 
 if __name__ == '__main__':
@@ -645,5 +669,7 @@ if __name__ == '__main__':
     #     si.get_indexes()
     ## Criação de tabelas e inserção de dados no banco
     stats = Statistics()
-    text = 'este é um texto aleatorio'
-    run = Diagnosys(text)
+    stats.insert_index_database()
+    
+    # text = 'este é um texto aleatorio'
+    # run = Diagnosys(text)
