@@ -6,11 +6,13 @@ import geopandas as gpd
 import geemap
 import rasterio
 import numpy as np
+import webbrowser
 from rasterio.merge import merge
 from itertools import groupby
 from decouple import config
 from shapely.geometry import LineString, MultiLineString
 from datetime import date
+from jinja2 import Environment, FileSystemLoader
 
 
 class SentinelHandler:
@@ -68,7 +70,6 @@ class SentinelHandler:
         ds_in = geodataframe
         # divide = int(ds_in['geometry'].to_crs(epsg=5880).area[0] / 220300)
         num_tiles = int(ds_in['geometry'].to_crs(epsg=5880).area[0] / 500000)
-        print(num_tiles)
         minx, miny, maxx, maxy = [i[1][0] for i in ds_in.bounds.items()]
         dx = (maxx - minx) / num_tiles
         dy = (maxy - miny) / num_tiles
@@ -581,9 +582,21 @@ class Postgresql:
             tables = [{"table": "stats", "fields":
                 {"id": 'serial primary key',
                  "data": 'text not null',
+                 "index": 'text not null',
+                 "raster_array": 'text not null',
+                 "raster_profile": 'text not null',
                  "zonal_stats": 'text not null',
                  "profile": 'text not null',
-                 }}, ]
+                 }},
+                      {"table": "stats_estimated", "fields":
+                          {"id": 'serial primary key',
+                           "data": 'text not null',
+                           "index": 'text not null',
+                           "raster_array": 'text not null',
+                           "raster_profile": 'text not null',
+                           "zonal_stats": 'text not null',
+                           "profile": 'text not null',
+                           }}]
         
         for table in tables:
             self.drop_table(table["table"])
@@ -592,23 +605,45 @@ class Postgresql:
             cur.execute(f'create table if not exists {table["table"]} ({",".join(fields)})')
             self.conn.commit()
             cur.close()
- 
+
 
 class Statistics:
     def __init__(self):
         self.database = Postgresql()
-
-
 ##TODO: Criar tabela com campos id, zonal_stats(dicionario), profile, bandas, data
 
 
+class Diagnosys:
+##TODO: Preparar saidas para html
+    def __init__(self, html):
+        self.text = html
+        self.run = self.print_html_doc()
+        
+    def print_html_doc(self):
+        env = Environment(loader=FileSystemLoader(os.getcwd()),
+                          trim_blocks=True)
+        template = env.get_template('./templates/index.html')
+        
+        web = template.render(title='estatisticas', run=self.text)
+        with open("./templates/plots.html", "w") as fh:
+            fh.write(web)
+
+        return webbrowser.open('file://' + os.path.realpath('./templates/index.html'))
+
+
+
+
 if __name__ == '__main__':
+    ## Download de imagens desde 15-07-2021
     # sd = SentinelDownloader()
     # sd.authenticate_gee()
     # sd.download_sentinel('teste.gpkg', 'gpkg', 'id_pk', '2021-07-15')
+    ## Geração dos indices para os downloads de imagens
     # sh = SentinelHandler()
     # for i in sh.path_files(sh.get_abs_path('merged')):
     #     si = SentinelIndexes(i)
-    #     si.get_indexes(['ari'])
-    #     break
+    #     si.get_indexes()
+    ## Criação de tabelas e inserção de dados no banco
     stats = Statistics()
+    text = 'este é um texto aleatorio'
+    run = Diagnosys(text)
