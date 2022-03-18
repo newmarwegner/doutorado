@@ -1,6 +1,5 @@
 import json
 import os
-import pickle
 import shutil
 import psycopg2
 import ee
@@ -15,6 +14,7 @@ from decouple import config
 from shapely.geometry import LineString, MultiLineString
 from datetime import date
 from jinja2 import Environment, FileSystemLoader
+from rasterstats import zonal_stats
 
 
 class SentinelHandler:
@@ -586,8 +586,8 @@ class Postgresql:
                  "data": 'date not null',
                  "index": 'text not null',
                  "raster_array": 'real array not null',
-                 "zonal_stats": 'text not null',
-                 "raster_profile": 'text not null'
+                 "zonal_stats": 'JSON not null',
+                 "raster_profile": 'JSON not null'
                  }},
                       {"table": "stats_estimated", "fields":
                           {"id": 'serial primary key',
@@ -595,7 +595,7 @@ class Postgresql:
                            "index": 'text not null',
                            "raster_array": 'text not null',
                            "zonal_stats": 'text not null',
-                           "raster_profile": 'text[] not null'
+                           "raster_profile": 'JSON not null'
                            }}]
         
         for table in tables:
@@ -608,36 +608,52 @@ class Postgresql:
 
 
 class Statistics:
-    def __init__(self):
+    def __init__(self, vector_name):
         self.database = Postgresql()
         self.sh = SentinelHandler()
+        self.vector_name = vector_name
     
-    def run_raster(self, path):
+    def run_raster(self, path, polygon):
+        """
+        Method to open raster with rasterio and get stats considering a boundary geopackage
+        :param path: path of raster
+        :return: array, profile and stats of raster
+        """
+        polygon_bbox = polygon.total_bounds
+        
         with rasterio.open(path) as src:
             image = src.read()
             profile = src.profile
-        src.close()
+            window = src.window(*polygon_bbox)
+            raster_array_np = src.read(1, window=window)
+            transform = src.window_transform(window)
+            stats = zonal_stats(polygon, raster_array_np, affine=transform)
         
-        return image, profile
+        return image, profile, stats
     
     def insert_index_database(self):
+        """
+        Method to insert references of raster and stats on database
+        :return: dataset insert in postgresql
+        """
+        polygon = gpd.read_file(f'../inputs/{self.vector_name}')
+        
         for path in self.sh.path_files('../indexes'):
-            raster_array, profile = self.run_raster(path)
+            raster_array, profile, stats = self.run_raster(path, polygon)
             date = path.split('/')[-1].split('_')[0]
             index = path.split('/')[-1].split('_')[1][0:-4]
-            zonal_stats = 1
+            zonal_stats = json.dumps(stats[0])
             raster_profile = dict(profile)
             raster_profile.update({'crs': str(raster_profile['crs'])})
+            profile = json.dumps(raster_profile)
+            
             cur = self.database.conn.cursor()
             sql = f"insert into stats (data,index,raster_array,zonal_stats, raster_profile) \
-                        values (to_date('{date}','YYYYMMDD'),'{index}',ARRAY{raster_array[0][0].tolist()},'1','{json.dumps(raster_profile)}');"
-            print(f'inserido o indice {index} para a data {date}!')
+                        values (to_date('{date}','YYYYMMDD'),'{index}',ARRAY{raster_array[0][0].tolist()},\
+                        '{zonal_stats}','{profile}');"
             cur.execute(sql)
             self.database.conn.commit()
             cur.close()
-            
-##TODO: Criar tabela com campos id, zonal_stats(dicionario), profile, bandas, data
-
 
 class Diagnosys:
     ##TODO: Preparar saidas para html
@@ -659,16 +675,17 @@ class Diagnosys:
 
 if __name__ == '__main__':
     ## Download de imagens desde 15-07-2021
+    vector_name = 'teste.gpkg'
     # sd = SentinelDownloader()
     # sd.authenticate_gee()
-    # sd.download_sentinel('teste.gpkg', 'gpkg', 'id_pk', '2021-07-15')
+    # sd.download_sentinel(vector_name, 'gpkg', 'id_pk', '2021-07-15')
     ## Geração dos indices para os downloads de imagens
     # sh = SentinelHandler()
     # for i in sh.path_files(sh.get_abs_path('merged')):
     #     si = SentinelIndexes(i)
     #     si.get_indexes()
     ## Criação de tabelas e inserção de dados no banco
-    stats = Statistics()
+    stats = Statistics(vector_name)
     stats.insert_index_database()
     
     # text = 'este é um texto aleatorio'
