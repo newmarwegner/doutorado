@@ -593,8 +593,8 @@ class Postgresql:
                           {"id": 'serial primary key',
                            "data": 'text not null',
                            "index": 'text not null',
-                           "raster_array": 'text not null',
-                           "zonal_stats": 'text not null',
+                           "raster_array": 'real not null',
+                           "zonal_stats": 'JSON not null',
                            "raster_profile": 'JSON not null'
                            }}]
         
@@ -675,18 +675,18 @@ class Diagnosys:
 
 if __name__ == '__main__':
     ## Download de imagens desde 15-07-2021
-    vector_name = 'teste.gpkg'
+    vector_name = 'vector_tasca_test.gpkg'
     # sd = SentinelDownloader()
     # sd.authenticate_gee()
-    # sd.download_sentinel(vector_name, 'gpkg', 'id_pk', '2021-07-15')
-    ## Geração dos indices para os downloads de imagens
+    # sd.download_sentinel(vector_name, 'gpkg', 'id_pk', '2017-07-01')
+    # # Geração dos indices para os downloads de imagens
     # sh = SentinelHandler()
     # for i in sh.path_files(sh.get_abs_path('merged')):
     #     si = SentinelIndexes(i)
     #     si.get_indexes()
-    ## Criação de tabelas e inserção de dados no banco
-    stats = Statistics(vector_name)
-    stats.insert_index_database()
+    # # Criação de tabelas e inserção de dados no banco
+    # stats = Statistics(vector_name)
+    # stats.insert_index_database()
     
     # text = 'este é um texto aleatorio'
     # run = Diagnosys(text)
