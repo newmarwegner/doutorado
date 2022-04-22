@@ -3,11 +3,13 @@ import os
 import shutil
 import psycopg2
 import ee
+import pandas as pd
 import geopandas as gpd
 import geemap
 import rasterio
 import numpy as np
 import webbrowser
+from sqlalchemy import create_engine
 from rasterio.merge import merge
 from itertools import groupby
 from decouple import config
@@ -15,12 +17,14 @@ from shapely.geometry import LineString, MultiLineString
 from datetime import date
 from jinja2 import Environment, FileSystemLoader
 from rasterstats import zonal_stats
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 
 class SentinelHandler:
     def __init__(self):
         pass
-    
+
     def get_abs_path(self, folder='agriculture'):
         """
         Absolute path of a especific folder
@@ -28,7 +32,7 @@ class SentinelHandler:
         :return: String of absolute path folder
         """
         return os.path.abspath(os.path.join(os.path.dirname(__file__), '..', folder))
-    
+
     def create_folder(self, path):
         """
         Method to create a folder in specific path
@@ -36,7 +40,7 @@ class SentinelHandler:
         """
         if not os.path.exists(path):
             os.makedirs(path)
-    
+
     def path_files(self, folder, endscaracters=('.tif',)):
         """
         Method to return a list of path files that endswith a specific caracters
@@ -49,9 +53,9 @@ class SentinelHandler:
             for file in files:
                 if file.endswith(endscaracters):
                     paths.append(os.path.join(folder, file))
-        
+
         return paths
-    
+
     def del_folders(self, folders=None):
         """
         Method to delete folders
@@ -62,7 +66,7 @@ class SentinelHandler:
             folders = ['outputs', 'merged']
         for folder in folders:
             shutil.rmtree(self.get_abs_path(folder))
-    
+
     def segment_vector(self, geodataframe):
         """
         Methon to divide vector in parts to download sentinel images
@@ -75,19 +79,19 @@ class SentinelHandler:
         minx, miny, maxx, maxy = [i[1][0] for i in ds_in.bounds.items()]
         dx = (maxx - minx) / num_tiles
         dy = (maxy - miny) / num_tiles
-        
+
         lines = []
         for x in range(num_tiles + 1):
             lines.append(LineString([(minx + x * dx, miny), (minx + x * dx, maxy)]))
         for y in range(num_tiles + 1):
             lines.append(LineString([(minx, miny + y * dy), (maxx, miny + y * dy)]))
-        
+
         grid = gpd.GeoDataFrame({'col1': ['id_pk'], 'geometry': [MultiLineString(lines)]}, crs="EPSG:4326")
         grid['geometry'] = grid['geometry'].buffer(0.0000000000001)
         gdf = gpd.overlay(ds_in, grid, how='difference').explode().reset_index()
-        
+
         return gdf.rename(columns={"level_1": 'id_pk'}).drop(columns='level_0')
-    
+
     def read_vectorlayer(self, vector, driver):
         """
         Method to read a vector layer
@@ -96,17 +100,17 @@ class SentinelHandler:
         :return:
         """
         gdf = gpd.read_file(os.path.join(self.get_abs_path('inputs'), vector), driver=driver)
-        
+
         if gdf['geometry'].count() == 1:
             area = gdf['geometry'].to_crs(epsg=5880).area
             if area[0] < 220300:
-                
+
                 return gdf.reset_index().rename(columns={"index": 'id_pk'})
             else:
                 return self.segment_vector(gdf)
         else:
             return 'Exist more than one features in vector limits, dissolve it and re-run the method'
-    
+
     def get_class(self, geodataframe, filter_field):
         """
         Method to get each class for each row in geodataframe
@@ -114,9 +118,9 @@ class SentinelHandler:
         :param filter_field: field to get unique classes
         :return: List with all unique classes in geodataframe field
         """
-        
+
         return list(set([v[filter_field] for k, v in geodataframe.iterrows()]))
-    
+
     def get_polygon_filtered(self, filter_field, feature_name, geodataframe):
         """
         Method to get polygon filtered considering loop with filter field
@@ -127,9 +131,9 @@ class SentinelHandler:
         filter_polygon = geodataframe.loc[(geodataframe[filter_field] == feature_name)]
         xmin, ymin, xmax, ymax = filter_polygon.total_bounds
         box = [[xmin, ymin], [xmin, ymax], [xmax, ymax], [xmax, ymin], [xmin, ymin]]
-        
+
         return filter_polygon, box
-    
+
     def rename_path_rasters(self):
         """
         Method to rename rasters according to date
@@ -142,7 +146,7 @@ class SentinelHandler:
                     os.rename(dir_path + file, dir_path + file[0:8] + '.tif')
                     full_path = f"{dir_path}{dir_path.split('/')[-2]}_{file.replace(file, file[0:8] + '.tif')}"
                     output_paths.append(full_path)
-    
+
     def down_paths(self):
         """
         Method to create a list of download images paths to be used in create a mosaic
@@ -154,31 +158,31 @@ class SentinelHandler:
             if not root.endswith('output'):
                 for file in files:
                     paths.append(os.path.join(root, file))
-        
+
         return paths
-    
+
     def grouppath_mosaic(self, paths_to_mosaic):
         """
             Method to grouppaths to create a input to mosaic
             """
         func = lambda x: x[-11:]
         temp = sorted(paths_to_mosaic, key=func)
-        
+
         return [list(paths_to_mosaic) for i, paths_to_mosaic in groupby(temp, func)]
 
 
 class SentinelDownloader:
     def __init__(self):
         self.handler = SentinelHandler()
-    
+
     def authenticate_gee(self):
         """
         Method to authenticate gee to download images
         """
         credentials = ee.ServiceAccountCredentials(config('service_account'), config('credentials_api'))
-        
+
         return ee.Initialize(credentials)
-    
+
     def down_geemap(self, feature_name, box, start_date, end_date=date.today()):
         """
         Method to configure download image with geemap
@@ -194,25 +198,25 @@ class SentinelDownloader:
             .filterBounds(boundary) \
             .filterMetadata('CLOUDY_PIXEL_PERCENTAGE', 'less_than', 100) \
             .filterDate(start_date, str(end_date))
-        
+
         geemap.ee_export_image_collection(collection, scale=10, crs='EPSG:4326', region=boundary, out_dir=out_dir)
-    
+
     def create_mosaic(self):
         """
         Method to create mosaic with all download images
         """
         self.handler.create_folder('../merged')
-        src_files_to_mosaic = []
-        out_meta = []
+
         for i in self.handler.grouppath_mosaic(self.handler.down_paths()):
             ano = i[0].split('/')[-1][-12:-4]
-            
+            src_files_to_mosaic = []
+            out_meta = []
             for file in i:
                 full = ''.join([file[:file.rfind('/') + 1], ano + '.tif'])
                 src = rasterio.open(full)
                 src_files_to_mosaic.append(src)
                 out_meta = src.meta.copy()
-            
+
             mosaic, out_trans = merge(src_files_to_mosaic)
             out_meta.update({"driver": "GTiff",
                              "height": mosaic.shape[1],
@@ -223,9 +227,9 @@ class SentinelDownloader:
                             )
             with rasterio.open(f'../merged/{ano}.tif', "w", **out_meta) as dest:
                 dest.write(mosaic)
-        
+
         self.handler.del_folders(['output', ])
-    
+
     def download_sentinel(self, vector_limit, driver, filter_field, start_date):
         """
         Method to download sentinel images from gee
@@ -240,7 +244,7 @@ class SentinelDownloader:
         for feature_name in feature_names:
             filter_polygon, box = self.handler.get_polygon_filtered(filter_field, feature_name, gdf)
             self.down_geemap(feature_name, box, start_date)
-        
+
         self.create_mosaic()
 
 
@@ -255,7 +259,7 @@ class SentinelIndexes:
         self.b11, self.b12, self.AOT, self.WVP, self.SCL, \
         self.TCI_R, self.TCI_G, self.TCI_B, self.MSK_CLDPRB, \
         self.MSK_SNWPRB, self.QA10, self.QA20, self.QA60 = self.get_bands()[0]
-    
+
     def get_bands(self):
         """
         Method to get bands from mosaics in list on order below
@@ -287,12 +291,12 @@ class SentinelIndexes:
                  src.read(21, masked=True),
                  src.read(22, masked=True),
                  src.read(23, masked=True)]
-        
+
         self.profile = src.profile
         src.close()
-        
+
         return bands, self.profile
-    
+
     def get_evi(self):
         """
         Method to generate evi index. The formula used:
@@ -302,9 +306,9 @@ class SentinelIndexes:
         numerator = np.multiply(2.5, np.subtract(self.b8, self.b4))
         denominator = np.add(np.add(self.b8, np.subtract(np.multiply(6, self.b8),
                                                          np.multiply(7.5, self.b2))), 1)
-        
+
         return np.divide(numerator, denominator)
-    
+
     def get_atsavi(self):
         """
         Method to generate atsavi index. The formula used:
@@ -314,12 +318,12 @@ class SentinelIndexes:
         """
         numerator = np.multiply(1.22,
                                 (np.subtract(np.subtract(self.b8, np.multiply(1.22, self.b4)), 0.03)))
-        
+
         denominator = np.add(np.subtract(np.add(self.b8, self.b4), np.multiply(1.22, 0.03)),
                              np.multiply(0.08, np.add(1.0, np.power(1.22, 2))))
-        
+
         return np.divide(numerator, denominator)
-    
+
     def get_ari(self):
         """
         Method to generate ari2 index. The formula used:
@@ -327,18 +331,18 @@ class SentinelIndexes:
        
         :return: Array with index values
         """
-        
+
         return np.subtract(np.divide(1, self.b3), np.divide(1, self.b5))
-    
+
     def get_avi(self):
         """
         Method to generate avi index. The formula used:
         2.0 * self.b9 - self.b4
         :return: Array with index values
         """
-        
+
         return np.subtract(np.multiply(2, self.b9), self.b4)
-    
+
     def get_arvi(self):
         """
         Method to generate arvi index. The formula used:
@@ -348,36 +352,36 @@ class SentinelIndexes:
         numerator = np.subtract(self.b9, self.b4, np.multiply(0.106, np.subtract(self.b4, self.b2)))
         denominator = np.add(self.b9,
                              np.subtract(self.b4, np.multiply(0.106, np.subtract(self.b4, self.b2))))
-        
+
         return np.divide(numerator, denominator)
-    
+
     def get_chlgreen(self):
         """
         Method to generate chlgreen index. The formula used:
         (self.b7/self.b3)**-1
         :return: Array with index values
         """
-        
+
         return np.power(np.divide(self.b7, self.b3), -1)
-    
+
     def get_fe3(self):
         """
         Method to generate fe3+ index. The formula used:
         self.b4/self.b3
         :return: Array with index values
         """
-        
+
         return np.divide(self.b4, self.b3)
-    
+
     def get_fo(self):
         """
         Method to generate fe3+ index. The formula used:
         self.b11/self.b8
         :return: Array with index values
         """
-        
+
         return np.divide(self.b11, self.b8)
-    
+
     def get_gvmi(self):
         """
         Method to generate gvmi index. The formula used:
@@ -386,9 +390,9 @@ class SentinelIndexes:
         """
         numerator = np.subtract(np.add(self.b8, 0.1), np.add(self.b12, 0.02))
         denominator = np.add(np.add(self.b8, 0.1), np.add(self.b12, 0.02))
-        
+
         return np.divide(numerator, denominator)
-    
+
     def get_gndvi(self):
         """
         Method to generate gndvi index. The formula used:
@@ -397,9 +401,9 @@ class SentinelIndexes:
         """
         numerator = np.subtract(self.b8, self.b3)
         denominator = np.add(self.b8, self.b3)
-        
+
         return np.divide(numerator, denominator)
-    
+
     def get_lci(self):
         """
         Method to generate lci index. The formula used:
@@ -408,9 +412,9 @@ class SentinelIndexes:
         """
         numerator = np.subtract(self.b8, self.b5)
         denominator = np.add(self.b8, self.b4)
-        
+
         return np.divide(numerator, denominator)
-    
+
     def get_ndmi(self):
         """
         Method to generate ndmi index. The formula used:
@@ -419,9 +423,9 @@ class SentinelIndexes:
         """
         numerator = np.subtract(self.b8, self.b11)
         denominator = np.add(self.b8, self.b11)
-        
+
         return np.divide(numerator, denominator)
-    
+
     def get_ndvi(self):
         """
         Method to generate ndvi index. The formula used:
@@ -430,9 +434,9 @@ class SentinelIndexes:
         """
         numerator = np.subtract(self.b8, self.b4)
         denominator = np.add(self.b8, self.b4)
-        
+
         return np.divide(numerator, denominator)
-    
+
     def get_sci(self):
         """
         Method to generate sci index. The formula used:
@@ -441,9 +445,9 @@ class SentinelIndexes:
         """
         numerator = np.subtract(self.b11, self.b8)
         denominator = np.add(self.b11, self.b8)
-        
+
         return np.divide(numerator, denominator)
-    
+
     def get_savi(self):
         """
         Method to generate savi index. The formula used:
@@ -452,9 +456,9 @@ class SentinelIndexes:
         """
         numerator = np.subtract(self.b8, self.b4)
         denominator = np.multiply(np.add(np.add(self.b8, self.b4), 0.428), np.add(1.0, 0.428))
-        
+
         return np.divide(numerator, denominator)
-    
+
     def get_ctvi(self):
         """
         Method to generate ctvi index. The formula used:
@@ -464,9 +468,9 @@ class SentinelIndexes:
         p1 = np.add(np.divide(np.subtract(self.b4, self.b3), np.add(self.b4, self.b3)), 0.5)
         p2 = np.abs(np.add(np.divide(np.subtract(self.b4, self.b3), np.add(self.b4, self.b3)), 0.5))
         p3 = np.sqrt(np.abs(np.add(np.divide(np.subtract(self.b4, self.b3), np.add(self.b4, self.b3)), 0.5)))
-        
+
         return np.multiply(np.divide(p1, p2), p3)
-    
+
     def get_indexes(self, indexes=None):
         """
         Method to export all indexes as tiff in indexes folder
@@ -479,7 +483,7 @@ class SentinelIndexes:
                        'evi', 'ndvi', 'sci', 'savi', 'ctvi']
         for index in indexes:
             self.export_index(index)
-    
+
     def export_index(self, index):
         """
         Method to run each get index a time and export to minimize use of memory
@@ -487,55 +491,55 @@ class SentinelIndexes:
         :return: Tiff exported
         """
         self.handler.create_folder('../indexes')
-        
+
         def export_atsavi():
             return self.get_atsavi()
-        
+
         def export_ari():
             return self.get_ari()
-        
+
         def export_avi():
             return self.get_avi()
-        
+
         def export_arvi():
             return self.get_arvi()
-        
+
         def export_chlgreen():
             return self.get_chlgreen()
-        
+
         def export_fe3():
             return self.get_fe3()
-        
+
         def export_fo():
             return self.get_fo()
-        
+
         def export_gvmi():
             return self.get_gvmi()
-        
+
         def export_gndvi():
             return self.get_gndvi()
-        
+
         def export_lci():
             return self.get_lci()
-        
+
         def export_ndmi():
             return self.get_ndmi()
-        
+
         def export_evi():
             return self.get_evi()
-        
+
         def export_ndvi():
             return self.get_ndvi()
-        
+
         def export_sci():
             return self.get_sci()
-        
+
         def export_savi():
             return self.get_savi()
-        
+
         def export_ctvi():
             return self.get_ctvi()
-        
+
         self.profile.update({'dtype': 'float32', 'count': 1})
         with rasterio.open(self.handler.get_abs_path('indexes') + '/' + self.date + '_' + index + '.tif', 'w',
                            **self.profile) as dst:
@@ -546,7 +550,7 @@ class Postgresql:
     def __init__(self):
         self.conn = self.conn_postgres()
         self.create_table()
-    
+
     def conn_postgres(self):
         """
         Method to connect with PostgreSQL Database
@@ -554,14 +558,14 @@ class Postgresql:
         """
         return psycopg2.connect(host=config('host'), database=config('database'), user=config('user'),
                                 password=config('password'))
-    
+
     def disconn(self):
         """
         Method to disconnet database
         :return: database closed
         """
         self.conn.close()
-    
+
     def drop_table(self, table):
         """
         Method to drop table in PostgreSQL
@@ -573,7 +577,7 @@ class Postgresql:
         cur.execute(sql)
         self.conn.commit()
         cur.close()
-    
+
     def create_table(self, tables=None):
         """
         Method to create table from a dictionary
@@ -597,7 +601,7 @@ class Postgresql:
                            "zonal_stats": 'JSON not null',
                            "raster_profile": 'JSON not null'
                            }}]
-        
+
         for table in tables:
             self.drop_table(table["table"])
             fields = [(i + ' ' + k) for i, k in table["fields"].items()]
@@ -612,7 +616,7 @@ class Statistics:
         self.database = Postgresql()
         self.sh = SentinelHandler()
         self.vector_name = vector_name
-    
+
     def run_raster(self, path, polygon):
         """
         Method to open raster with rasterio and get stats considering a boundary geopackage
@@ -620,7 +624,7 @@ class Statistics:
         :return: array, profile and stats of raster
         """
         polygon_bbox = polygon.total_bounds
-        
+
         with rasterio.open(path) as src:
             image = src.read()
             profile = src.profile
@@ -628,16 +632,16 @@ class Statistics:
             raster_array_np = src.read(1, window=window)
             transform = src.window_transform(window)
             stats = zonal_stats(polygon, raster_array_np, affine=transform)
-        
+
         return image, profile, stats
-    
+
     def insert_index_database(self):
         """
         Method to insert references of raster and stats on database
         :return: dataset insert in postgresql
         """
         polygon = gpd.read_file(f'../inputs/{self.vector_name}')
-        
+
         for path in self.sh.path_files('../indexes'):
             raster_array, profile, stats = self.run_raster(path, polygon)
             date = path.split('/')[-1].split('_')[0]
@@ -646,7 +650,7 @@ class Statistics:
             raster_profile = dict(profile)
             raster_profile.update({'crs': str(raster_profile['crs'])})
             profile = json.dumps(raster_profile)
-            
+
             cur = self.database.conn.cursor()
             sql = f"insert into stats (data,index,raster_array,zonal_stats, raster_profile) \
                         values (to_date('{date}','YYYYMMDD'),'{index}',ARRAY{raster_array[0][0].tolist()},\
@@ -655,27 +659,53 @@ class Statistics:
             self.database.conn.commit()
             cur.close()
 
-class Diagnosys:
+
+class PlotHtml:
     ##TODO: Preparar saidas para html
-    def __init__(self, html):
-        self.text = html
-        self.run = self.print_html_doc()
-    
-    def print_html_doc(self):
-        env = Environment(loader=FileSystemLoader(os.getcwd()),
-                          trim_blocks=True)
-        template = env.get_template('./templates/index.html')
-        
-        web = template.render(title='estatisticas', run=self.text)
-        with open("./templates/plots.html", "w") as fh:
-            fh.write(web)
-        
-        return webbrowser.open('file://' + os.path.realpath('./templates/index.html'))
+    def __init__(self):
+        self.db_connection_url = config('dburl')
+
+    def conn_postgres(self):
+        """
+        Function to connect with postgresql database considering url inside of .env file
+        :return: return a connection with postgresql
+        """
+        self.conn = create_engine(self.db_connection_url)
+        return self.conn
+
+    def stats(self):
+        "data index zonalstats"
+        sql = f'select data, index, zonal_stats from stats order by data'
+        df = pd.read_sql_query(sql, con=self.conn_postgres())
+
+        return df.join(pd.json_normalize(df.zonal_stats))
+
+    def html(self):
+        pd.set_option('display.max_columns', 1000)
+        pd.set_option('display.width', 10000)
+        df = self.stats()
+        gdf = gpd.read_file('../inputs/vector_tasca_test.gpkg')
+        #fig = make_subplots(rows=2, subplot_titles=('Plot 1', 'Plot 2'))
+        fig = make_subplots(
+            rows=2, cols=2,
+            column_widths=[0.6, 0.4],
+            row_heights=[0.4, 0.6],
+            )
+        import plotly.express as px
+
+        #fig = px.line(df, x="data", y="mean", color="index", title='History Indexes in Study Area',markers=True)
+
+        fig.add_trace(
+            px.line(df, x="data", y="mean", color="index", title='History Indexes in Study Area',markers=True)
+        )
+
+
+        fig.show()
 
 
 if __name__ == '__main__':
     ## Download de imagens desde 15-07-2021
-    vector_name = 'vector_tasca_test.gpkg'
+    # vector_name = 'vector_tasca_test.gpkg'
     # sd = SentinelDownloader()
     # sd.authenticate_gee()
     # sd.download_sentinel(vector_name, 'gpkg', 'id_pk', '2017-07-01')
@@ -687,6 +717,7 @@ if __name__ == '__main__':
     # # Criação de tabelas e inserção de dados no banco
     # stats = Statistics(vector_name)
     # stats.insert_index_database()
-    
-    # text = 'este é um texto aleatorio'
-    # run = Diagnosys(text)
+
+
+    plot = PlotHtml()
+    plot.html()

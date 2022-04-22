@@ -9,4 +9,9 @@ indexes/
 inputs/vector_tasca_test.gpkg-shm
 inputs/vector_tasca_test.gpkg-wal
 merged/
+.ipynb_checkpoints/
+Codigos doutorado.ipynb
+Untitled.ipynb
+agriculture/__pycache__/
+
 
