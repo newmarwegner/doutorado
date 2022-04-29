@@ -19,6 +19,7 @@ from jinja2 import Environment, FileSystemLoader
 from rasterstats import zonal_stats
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from dashboard import Dashboard
 
 
 class SentinelHandler:
@@ -680,27 +681,9 @@ class PlotHtml:
 
         return df.join(pd.json_normalize(df.zonal_stats))
 
-    def html(self):
-        pd.set_option('display.max_columns', 1000)
-        pd.set_option('display.width', 10000)
-        df = self.stats()
-        gdf = gpd.read_file('../inputs/vector_tasca_test.gpkg')
-        #fig = make_subplots(rows=2, subplot_titles=('Plot 1', 'Plot 2'))
-        fig = make_subplots(
-            rows=2, cols=2,
-            column_widths=[0.6, 0.4],
-            row_heights=[0.4, 0.6],
-            )
-        import plotly.express as px
-
-        #fig = px.line(df, x="data", y="mean", color="index", title='History Indexes in Study Area',markers=True)
-
-        fig.add_trace(
-            px.line(df, x="data", y="mean", color="index", title='History Indexes in Study Area',markers=True)
-        )
 
 
-        fig.show()
+
 
 
 if __name__ == '__main__':
@@ -717,7 +700,7 @@ if __name__ == '__main__':
     # # Criação de tabelas e inserção de dados no banco
     # stats = Statistics(vector_name)
     # stats.insert_index_database()
-
-
+    #
     plot = PlotHtml()
-    plot.html()
+    dash = Dashboard()
+    dash.graph_index(plot.stats())
