@@ -8,17 +8,13 @@ import geopandas as gpd
 import geemap
 import rasterio
 import numpy as np
-import webbrowser
 from sqlalchemy import create_engine
 from rasterio.merge import merge
 from itertools import groupby
 from decouple import config
 from shapely.geometry import LineString, MultiLineString
 from datetime import date
-from jinja2 import Environment, FileSystemLoader
 from rasterstats import zonal_stats
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from dashboard import Dashboard
 
 
@@ -703,4 +699,6 @@ if __name__ == '__main__':
     #
     plot = PlotHtml()
     dash = Dashboard()
+    df = plot.stats()
+
     dash.graph_index(plot.stats())
