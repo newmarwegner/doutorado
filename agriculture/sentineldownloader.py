@@ -683,7 +683,7 @@ class PlotHtml:
 
 
 if __name__ == '__main__':
-    ## Download de imagens desde 15-07-2021
+    # Download de imagens desde 15-07-2021
     # vector_name = 'vector_tasca_test.gpkg'
     # sd = SentinelDownloader()
     # sd.authenticate_gee()

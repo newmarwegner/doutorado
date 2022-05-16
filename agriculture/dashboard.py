@@ -1,7 +1,7 @@
 import base64
-
+import pandas as pd
 import dash_bootstrap_components.themes
-from dash import Dash, dcc, html
+from dash import Dash, dcc, html, Output, Input
 import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
@@ -37,9 +37,9 @@ class Dashboard:
         return fig
 
     def graph_index(self, df_stats):
-        app = Dash(__name__, external_stylesheets=[dbc.themes.CYBORG])
         # logo = '/home/newmar/Downloads/python_projects/doutorado/agriculture/templates/logo.png'  # replace with your own image
         # vector = gpd.read_file('/home/newmar/Downloads/python_projects/doutorado/inputs/vector_tasca_test.gpkg')
+        app = Dash(__name__, external_stylesheets=[dbc.themes.CYBORG])
 
         # fig2 = vector.plot()
         app.layout = dbc.Container(
@@ -47,7 +47,7 @@ class Dashboard:
 
                 dbc.Col([
                     html.Div([
-                        html.H3("Unioeste geoprocessing laboratory - GEOLAB"),
+                        html.H3("Geolab geoprocessing laboratory - GEOLAB"),
                         html.H5("History indexes database for Agriculture")
                     ], style={}),
                     html.P("", style={"margin-top": "40px"}),
@@ -55,32 +55,28 @@ class Dashboard:
                         html.Div([
                             html.H6("Select Range of years"),
                             html.Br(),
-                            dcc.RangeSlider(
-                                min=0,
-                                max=9,
-                                marks={i: f'Label {i}' if i == 1 else str(i) for i in range(1, 6)},
-                                # value=5,
-                            ),
+                            dcc.RangeSlider(id='input_range',
+                                            min=pd.DatetimeIndex(df_stats['data']).year.unique().min(),
+                                            max=pd.DatetimeIndex(df_stats['data']).year.unique().max(),
+                                            marks={i: str(i) for i in pd.DatetimeIndex(df_stats['data']).year.unique()},
+
+                                            ),
                         ], style={}),
                         html.P("", style={"margin-top": "20px"}),
                     ]),
                     dbc.Row([
                         dbc.Col([dbc.Card([
                             dbc.CardBody([
-                                html.Span("Min value history Index", className="card-text"),
-                                html.H3(style={"color": "#adfc92"}, id="media-indice-text"),
-                                html.Span("Média Indice", className="card-text"),
-                                html.H5(id="mean-indice-text"),
+                                html.Span("Min value NDVI history Index", className="card-text"),
+                                html.H3(style={"color": "#adfc92"}, id="min-indice-text"),
                             ])
                         ], color="light", outline=True, style={"margin-top": "10px",
                                                                "box-shadow": "0 4px 4px 0 rgba(0, 0, 0, 0.15), 0 4px 20px 0 rgba(0, 0, 0, 0.19)",
                                                                "color": "#FFFFFF"})], md=4),
                         dbc.Col([dbc.Card([
                             dbc.CardBody([
-                                html.Span("Mean value history Index", className="card-text"),
-                                html.H3(style={"color": "#adfc92"}, id="max-indice-text"),
-                                html.Span("Máxima Indice", className="card-text"),
-                                html.H5(id="maxima-indice-text"),
+                                html.Span("Mean value NDVI history Index", className="card-text"),
+                                html.H3(style={"color": "#adfc92"}, id="mean-indice-text"),
                             ])
                         ], color="light", outline=True, style={"margin-top": "10px",
                                                                "box-shadow": "0 4px 4px 0 rgba(0, 0, 0, 0.15), 0 4px 20px 0 rgba(0, 0, 0, 0.19)",
@@ -88,10 +84,9 @@ class Dashboard:
 
                         dbc.Col([dbc.Card([
                             dbc.CardBody([
-                                html.Span("Max value history Index", className="card-text"),
-                                html.H3(style={"color": "#adfc92"}, id="min-indice-text"),
-                                html.Span("Minima Indice", className="card-text"),
-                                html.H5(id="minima-indice-text"),
+                                html.Span("Max value NDVI history Index", className="card-text"),
+                                html.H3(style={"color": "#adfc92"}, id="max-indice-text"),
+
                             ])
                         ], color="light", outline=True, style={"margin-top": "10px",
                                                                "box-shadow": "0 4px 4px 0 rgba(0, 0, 0, 0.15), 0 4px 20px 0 rgba(0, 0, 0, 0.19)",
@@ -103,25 +98,72 @@ class Dashboard:
 
                     dcc.Graph(
                         id='graph_indexes',
-                        figure=self.ndvi_index(df_stats))], md=5,
+                    )], md=5,
                     style={"padding": "25px", "background-color": "#242424"}),
 
                 dbc.Col([
                     dbc.Row([
                         dbc.Col([
-                            dcc.Dropdown(df_stats['index'].unique(), placeholder="Select index"), ]),
+                            dcc.Dropdown(df_stats['index'].unique(), placeholder="Select index", id='dropdown_a')]),
 
                         dbc.Col([
-                            dcc.Dropdown(df_stats['index'].unique(), placeholder="Select index"), ])
+                            dcc.Dropdown(df_stats['index'].unique(), placeholder="Select index", id='dropdown_b'), ])
 
                     ]
 
                     ),
 
                     dcc.Graph(
-                        id='outro',
-                        figure=self.all_indexes(df_stats),
+                        id='all_indexes',
                         style={"height": "100vh"})
                 ], md=7)], class_name='g-O'), fluid=True)
+
+        @app.callback(
+            [Output(component_id='graph_indexes', component_property='figure'),
+             Output(component_id='min-indice-text', component_property='children'),
+             Output(component_id='mean-indice-text', component_property='children'),
+             Output(component_id='max-indice-text', component_property='children')],
+            Input(component_id='input_range', component_property='value')
+        )
+        def update_ndvi_index(input_value):
+            if input_value is None:
+                df = df_stats
+            else:
+                dateindex = (pd.DatetimeIndex(df_stats['data']).year >= input_value[0]) & (
+                            pd.DatetimeIndex(df_stats['data']).year <= input_value[1])
+                df = df_stats.loc[dateindex]
+            filter = df['index'] == 'ndvi'
+            ndvi_mean = df.loc[filter]['mean'].mean()
+            ndvi_max = df.loc[filter]['mean'].max()
+            ndvi_min = df.loc[filter]['mean'].min()
+
+
+            return [self.ndvi_index(df), str(round(ndvi_min,3)), str(round(ndvi_mean,3)), str(round(ndvi_max,3))]
+
+        @app.callback(
+            Output(component_id='all_indexes', component_property='figure'),
+            [Input(component_id='input_range', component_property='value'),
+             Input(component_id='dropdown_a', component_property= 'value'),
+             Input(component_id='dropdown_b', component_property='value'),
+             ]
+        )
+        def update_all_index(input_range, dropdown_a, dropdown_b):
+            indexes = [dropdown_a,dropdown_b]
+
+            if input_range is None:
+                df = df_stats
+            else:
+                dateindex = (pd.DatetimeIndex(df_stats['data']).year >= input_range[0]) & (
+                        pd.DatetimeIndex(df_stats['data']).year <= input_range[1]) & df_stats['index'].isin(indexes)
+                df = df_stats.loc[dateindex]
+                print(df)
+
+
+
+            return self.all_indexes(df)
+
+
+
+
 
         app.run_server(debug=True)
