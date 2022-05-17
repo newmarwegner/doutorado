@@ -1,11 +1,9 @@
-import base64
-import pandas as pd
-import dash_bootstrap_components.themes
-from dash import Dash, dcc, html, Output, Input
 import dash_bootstrap_components as dbc
+import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import geopandas as gpd
+from itertools import islice
+from dash import Dash, dcc, html, Output, Input
 
 
 class Dashboard:
@@ -36,12 +34,27 @@ class Dashboard:
             showlegend=True, )
         return fig
 
-    def graph_index(self, df_stats):
+    def heatmap_db(self, df_rasters, index='ndvi', data=pd.to_datetime('2018-12-17')):
+        df = df_rasters.loc[df_rasters['index'] == index]
+        df = df.loc[df['data'] == data]
+        width = pd.DataFrame(df['raster_profile']).to_dict('records')[0]['raster_profile']['width']
+        input = list(df['raster_array'])[0]
+        output = list(islice(input, width))
+        fig = px.imshow(output,
+                        template='plotly_dark')
+
+        fig.update_layout(
+            paper_bgcolor="#242424",
+            autosize=True,
+            margin=go.layout.Margin(l=100, r=100, t=20, b=80),
+            showlegend=True, )
+        return fig
+
+    def graph_index(self, df_stats, df_rasters):
         # logo = '/home/newmar/Downloads/python_projects/doutorado/agriculture/templates/logo.png'  # replace with your own image
         # vector = gpd.read_file('/home/newmar/Downloads/python_projects/doutorado/inputs/vector_tasca_test.gpkg')
         app = Dash(__name__, external_stylesheets=[dbc.themes.CYBORG])
 
-        # fig2 = vector.plot()
         app.layout = dbc.Container(
             dbc.Row([
 
@@ -104,18 +117,29 @@ class Dashboard:
                 dbc.Col([
                     dbc.Row([
                         dbc.Col([
-                            dcc.Dropdown(df_stats['index'].unique(), placeholder="Select index", id='dropdown_a')]),
+                            dcc.Dropdown(df_stats['index'].unique(), 'ndvi', placeholder="Select index",
+                                         id='dropdown_a')]),
 
                         dbc.Col([
-                            dcc.Dropdown(df_stats['index'].unique(), placeholder="Select index", id='dropdown_b'), ])
+                            dcc.Dropdown(df_stats['index'].unique(), 'avi', placeholder="Select index",
+                                         id='dropdown_b'), ])
 
-                    ]
-
-                    ),
+                    ]),
 
                     dcc.Graph(
                         id='all_indexes',
-                        style={"height": "100vh"})
+                        style={"height": "45vh"}),
+                    dbc.Row([
+                        dbc.Col([
+                            dcc.Dropdown(df_stats['index'].unique(), 'ndvi', placeholder="Select index",
+                                         id='dropdown_index')]),
+                        dbc.Col([
+                            dcc.Dropdown(df_stats['data'].unique(),df_stats['data'].unique()[0], placeholder="Select date",
+                                         id='dropdown_date')]),
+                    ]),
+                    dcc.Graph(
+                        id='raster_map',
+                        style={"height": "45vh"})
                 ], md=7)], class_name='g-O'), fluid=True)
 
         @app.callback(
@@ -130,40 +154,42 @@ class Dashboard:
                 df = df_stats
             else:
                 dateindex = (pd.DatetimeIndex(df_stats['data']).year >= input_value[0]) & (
-                            pd.DatetimeIndex(df_stats['data']).year <= input_value[1])
+                        pd.DatetimeIndex(df_stats['data']).year <= input_value[1])
                 df = df_stats.loc[dateindex]
             filter = df['index'] == 'ndvi'
             ndvi_mean = df.loc[filter]['mean'].mean()
             ndvi_max = df.loc[filter]['mean'].max()
             ndvi_min = df.loc[filter]['mean'].min()
 
-
-            return [self.ndvi_index(df), str(round(ndvi_min,3)), str(round(ndvi_mean,3)), str(round(ndvi_max,3))]
+            return [self.ndvi_index(df), str(round(ndvi_min, 3)), str(round(ndvi_mean, 3)), str(round(ndvi_max, 3))]
 
         @app.callback(
             Output(component_id='all_indexes', component_property='figure'),
             [Input(component_id='input_range', component_property='value'),
-             Input(component_id='dropdown_a', component_property= 'value'),
+             Input(component_id='dropdown_a', component_property='value'),
              Input(component_id='dropdown_b', component_property='value'),
              ]
         )
         def update_all_index(input_range, dropdown_a, dropdown_b):
-            indexes = [dropdown_a,dropdown_b]
+            indexes = [dropdown_a, dropdown_b]
 
             if input_range is None:
-                df = df_stats
+                df = df_stats.loc[df_stats['index'].isin(indexes)]
             else:
                 dateindex = (pd.DatetimeIndex(df_stats['data']).year >= input_range[0]) & (
                         pd.DatetimeIndex(df_stats['data']).year <= input_range[1]) & df_stats['index'].isin(indexes)
                 df = df_stats.loc[dateindex]
-                print(df)
-
-
 
             return self.all_indexes(df)
 
+        @app.callback(
+            Output(component_id='raster_map', component_property='figure'),
+            [Input(component_id='dropdown_index', component_property='value'),
+             Input(component_id='dropdown_date', component_property='value'),]
+        )
+        def update_heatmap_db(dropdown_index, dropdown_date):
+            dropdown_date = pd.to_datetime(dropdown_date)
 
-
-
+            return self.heatmap_db(df_rasters,dropdown_index,dropdown_date)
 
         app.run_server(debug=True)

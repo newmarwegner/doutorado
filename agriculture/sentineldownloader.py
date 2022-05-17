@@ -18,6 +18,7 @@ from rasterstats import zonal_stats
 from dashboard import Dashboard
 
 
+
 class SentinelHandler:
     def __init__(self):
         pass
@@ -608,6 +609,7 @@ class Postgresql:
             cur.close()
 
 
+
 class Statistics:
     def __init__(self, vector_name):
         self.database = Postgresql()
@@ -650,11 +652,12 @@ class Statistics:
 
             cur = self.database.conn.cursor()
             sql = f"insert into stats (data,index,raster_array,zonal_stats, raster_profile) \
-                        values (to_date('{date}','YYYYMMDD'),'{index}',ARRAY{raster_array[0][0].tolist()},\
+                        values (to_date('{date}','YYYYMMDD'),'{index}',ARRAY{raster_array[0].tolist()},\
                         '{zonal_stats}','{profile}');"
             cur.execute(sql)
             self.database.conn.commit()
             cur.close()
+
 
 
 class PlotHtml:
@@ -677,28 +680,33 @@ class PlotHtml:
 
         return df.join(pd.json_normalize(df.zonal_stats))
 
+    def raster_from_db(self):
+        sql = f"select id, data, index, raster_array, raster_profile from stats;"
+        df = pd.read_sql_query(sql, con=self.conn_postgres())
 
+        return df
 
 
 
 
 if __name__ == '__main__':
-    # Download de imagens desde 15-07-2021
-    # vector_name = 'vector_tasca_test.gpkg'
+    ## Download de imagens desde 15-07-2021
+    vector_name = 'vector_tasca_test.gpkg'
     # sd = SentinelDownloader()
     # sd.authenticate_gee()
     # sd.download_sentinel(vector_name, 'gpkg', 'id_pk', '2017-07-01')
-    # # Geração dos indices para os downloads de imagens
+    ## Geração dos indices para os downloads de imagens
     # sh = SentinelHandler()
     # for i in sh.path_files(sh.get_abs_path('merged')):
     #     si = SentinelIndexes(i)
     #     si.get_indexes()
-    # # Criação de tabelas e inserção de dados no banco
+    ## Criação de tabelas e inserção de dados no banco
     # stats = Statistics(vector_name)
     # stats.insert_index_database()
-    #
+
+    ## Run Dashboard
     plot = PlotHtml()
     dash = Dashboard()
     df = plot.stats()
-
-    dash.graph_index(plot.stats())
+    df_rasters = plot.raster_from_db()
+    dash.graph_index(df, df_rasters)
