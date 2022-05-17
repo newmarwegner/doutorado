@@ -4,7 +4,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 from itertools import islice
 from dash import Dash, dcc, html, Output, Input
-
+import warnings
+warnings.filterwarnings("ignore")
 
 class Dashboard:
     def __init__(self):
@@ -34,14 +35,14 @@ class Dashboard:
             showlegend=True, )
         return fig
 
-    def heatmap_db(self, df_rasters, index='ndvi', data=pd.to_datetime('2018-12-17')):
+    def heatmap_db(self, df_rasters, index='ndvi', data=pd.Timestamp('2018-12-17')):
         df = df_rasters.loc[df_rasters['index'] == index]
+        df['data'] = pd.to_datetime(df['data'])
         df = df.loc[df['data'] == data]
         width = pd.DataFrame(df['raster_profile']).to_dict('records')[0]['raster_profile']['width']
         input = list(df['raster_array'])[0]
         output = list(islice(input, width))
-        fig = px.imshow(output,
-                        template='plotly_dark')
+        fig = px.imshow(output, template='plotly_dark')
 
         fig.update_layout(
             paper_bgcolor="#242424",
@@ -188,7 +189,7 @@ class Dashboard:
              Input(component_id='dropdown_date', component_property='value'),]
         )
         def update_heatmap_db(dropdown_index, dropdown_date):
-            dropdown_date = pd.to_datetime(dropdown_date)
+            dropdown_date = pd.Timestamp(dropdown_date)
 
             return self.heatmap_db(df_rasters,dropdown_index,dropdown_date)
 
