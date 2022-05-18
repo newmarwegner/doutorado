@@ -61,7 +61,7 @@ class Dashboard:
 
                 dbc.Col([
                     html.Div([
-                        html.H3("Geolab geoprocessing laboratory - GEOLAB"),
+                        html.H3("Geoprocessing laboratory - GEOLAB"),
                         html.H5("History indexes database for Agriculture")
                     ], style={}),
                     html.P("", style={"margin-top": "40px"}),

@@ -18,7 +18,6 @@ from rasterstats import zonal_stats
 from dashboard import Dashboard
 
 
-
 class SentinelHandler:
     def __init__(self):
         pass
@@ -609,7 +608,6 @@ class Postgresql:
             cur.close()
 
 
-
 class Statistics:
     def __init__(self, vector_name):
         self.database = Postgresql()
@@ -659,7 +657,6 @@ class Statistics:
             cur.close()
 
 
-
 class PlotHtml:
     ##TODO: Preparar saidas para html
     def __init__(self):
@@ -685,8 +682,6 @@ class PlotHtml:
         df = pd.read_sql_query(sql, con=self.conn_postgres())
 
         return df
-
-
 
 
 if __name__ == '__main__':
