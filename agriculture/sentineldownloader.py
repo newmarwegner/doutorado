@@ -658,26 +658,32 @@ class Statistics:
 
 
 class PlotHtml:
-    ##TODO: Preparar saidas para html
     def __init__(self):
         self.db_connection_url = config('dburl')
 
     def conn_postgres(self):
         """
-        Function to connect with postgresql database considering url inside of .env file
+        Method to connect with postgresql database considering url inside of .env file
         :return: return a connection with postgresql
         """
         self.conn = create_engine(self.db_connection_url)
         return self.conn
 
     def stats(self):
-        "data index zonalstats"
+        """
+        Method to connect with postgresql database and get statistics converting to dataframe
+        :return: return a dataframe of statistics order by date
+        """
         sql = f'select data, index, zonal_stats from stats order by data'
         df = pd.read_sql_query(sql, con=self.conn_postgres())
 
         return df.join(pd.json_normalize(df.zonal_stats))
 
     def raster_from_db(self):
+        """
+        Method to connect with postgresql database and get table stats converting to dataframe
+        :return: return a dataframe of table stats
+        """
         sql = f"select id, data, index, raster_array, raster_profile from stats;"
         df = pd.read_sql_query(sql, con=self.conn_postgres())
 
