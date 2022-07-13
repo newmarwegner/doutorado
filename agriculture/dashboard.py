@@ -15,7 +15,6 @@ class Dashboard:
         fig = px.line(df_stats[df_stats['index'] == 'ndvi'], x="data", y="mean",
                       title='History of NDVI Index in Study Area',
                       template='plotly_dark', markers=False)
-
         fig.update_layout(
             paper_bgcolor="#242424",
             autosize=True,
@@ -42,7 +41,7 @@ class Dashboard:
         width = pd.DataFrame(df['raster_profile']).to_dict('records')[0]['raster_profile']['width']
         input = list(df['raster_array'])[0]
         output = list(islice(input, width))
-        fig = px.imshow(output, template='plotly_dark')
+        fig = px.imshow(output, color_continuous_scale='YlGn', template='plotly_dark')
 
         fig.update_layout(
             paper_bgcolor="#242424",
@@ -55,14 +54,14 @@ class Dashboard:
         # logo = '/home/newmar/Downloads/python_projects/doutorado/agriculture/templates/logo.png'  # replace with your own image
         # vector = gpd.read_file('/home/newmar/Downloads/python_projects/doutorado/inputs/vector_tasca_test.gpkg')
         app = Dash(__name__, external_stylesheets=[dbc.themes.CYBORG])
-
+        server = app.server # to heroku
         app.layout = dbc.Container(
             dbc.Row([
 
                 dbc.Col([
                     html.Div([
                         html.H3("Geoprocessing laboratory - GEOLAB"),
-                        html.H5("History indexes database for Agriculture")
+                        html.H5("Database of indices for agriculture in the Aldo Tasca experimental area")
                     ], style={}),
                     html.P("", style={"margin-top": "40px"}),
                     dbc.Row([
