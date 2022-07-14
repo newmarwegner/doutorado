@@ -190,8 +190,8 @@ if __name__ == '__main__':
     # create_np_images(list_images, 'dados_global')
 
     ## Run to Create a Neural Network Model
-    train_dataset, val_dataset = train_val_dataset('./templates/dados_global.npy', 10)
-    train_save(train_dataset, val_dataset, 'global_10')
-    #plots()
+    train_dataset, val_dataset = train_val_dataset('./templates/dados_soja.npy', 5)
+    train_save(train_dataset, val_dataset, 'soja_5')
+    #plots('soja_5_history')
 
 
